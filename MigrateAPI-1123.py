@@ -15,10 +15,10 @@ import shutil
 import ssl
 import urllib
 
-tcfile = r"D:\A-Flower\AutoStyler\Automation\AutostylerScene\input\UAT-22.csv"
+tcfile = r"D:\A-Flower\AutoStyler\Automation\AutostylerScene\input\PROD-22.csv"
 
 onlyHardDeco = False
-isProd = False
+isProd = True
 if isProd:
     url = "http://47.95.219.76:30008/api/rest/v1.0/tenants/ezhome/designs/migrate"
 else:
@@ -31,7 +31,7 @@ headers = {
 
 
 pollingCycle = 3 # try to download file from url every 3s
-retryCount = 60 # the retry count for downloading file
+retryCount = 100 # the retry count for downloading file
 # the timeout for each url downloading is 60x3s=180s=3min
 
 downloadFailedTC_1st = [] #files that failed to download for the first cycle
@@ -90,11 +90,9 @@ def bool_downloadUrl(jsonurl,fname,pollingCycle,retrycount):
         except:
             traceback.print_exc()
             print("--------------download failed ", jsonurl, "-------------")
-            downloadFailedTC_1st.append(jsonurl)
         time.sleep(pollingCycle)   # sleep 2s and try to download file again
         i = i+1
     print("---------------failed to download ", jsonurl,"-----------------")
-    downloadFailedTC_1st.append(jsonurl)
     return False
 
 
@@ -144,11 +142,12 @@ def postRequestSingleThread(testCaseListForSingleThread):
             datajsonURL.append(links[0])
         WorkingOnCaseNo = WorkingOnCaseNo+1
 
-def downloadUrlSingleThread(jsonURLList,resultfolder):
+def downloadUrlSingleThread(jsonURLList,resultfolder,failedlist):
     WorkingOnCaseNo = 0
     for each in jsonURLList:
         fname = resultfolder+"\\"+each.split("/")[-2]+"_"+"data.json"
-        bool_downloadUrl(each, fname, pollingCycle, retryCount)
+        if not bool_downloadUrl(each, fname, pollingCycle, retryCount):
+            failedlist.append(each)
         WorkingOnCaseNo = WorkingOnCaseNo+1
 
 def getThreadCount(totalCaseCount):
@@ -156,6 +155,7 @@ def getThreadCount(totalCaseCount):
         return totalCaseCount
     else:
         return 30
+
 
 if __name__ == '__main__':
     tStart = datetime.datetime.now()
@@ -195,7 +195,7 @@ if __name__ == '__main__':
             tmp = []
             tmp.append(datajsonURLForThreads)
 #            print(tmp)
-            th = threading.Thread(target = downloadUrlSingleThread, args = (datajsonURLForThreads[i],resultfolder))
+            th = threading.Thread(target = downloadUrlSingleThread, args = (datajsonURLForThreads[i],resultfolder,downloadFailedTC_1st))
             threads.append(th)
         for t in threads:
             t.start()
@@ -211,20 +211,18 @@ if __name__ == '__main__':
         print(requestFailedTC)
 
     if len(downloadFailedTC_1st)>0:
-        print(len(downloadFailedTC_1st), " cases failed when download json for the 1st cycle.")
         # for each in downloadFailedTC_1st:
         #     if not bool_downloadUrl(each,resultfolder+"\\"+each.split("/")[-2]+"_"+"data.json" , pollingCycle,retryCount):
         #         downloadFailedTC_2nd.append(url)
         threadCount_2nd_download = getThreadCount(len(downloadFailedTC_1st))
         datajsonURLForThreads_2nd = assignTC2Thread(threadCount_2nd_download,downloadFailedTC_1st)
-        print(datajsonURLForThreads_2nd)
         # Start multi threads
         threads = []
         try:
             for i in range(threadCount_2nd_download):
                 tmp = []
                 tmp.append(datajsonURLForThreads_2nd)
-                th = threading.Thread(target = downloadUrlSingleThread, args = (datajsonURLForThreads_2nd[i],resultfolder))
+                th = threading.Thread(target = downloadUrlSingleThread, args = (datajsonURLForThreads_2nd[i],resultfolder,downloadFailedTC_2nd))
                 threads.append(th)
             for t in threads:
                 t.start()
@@ -233,10 +231,11 @@ if __name__ == '__main__':
         except:
             print("----------Start multi thread for downloading failed -----------------------")
             traceback.print_exc()
+        print(len(downloadFailedTC_1st), " cases failed when download json for the 1st cycle.")
 
 
     if len(downloadFailedTC_2nd)>0:
-        print(len(downloadFailedTC_2nd), " cases failed when download json, below are failed cases.")
+        print(len(downloadFailedTC_2nd), " cases failed when download json for the 2nd cycle, below are failed cases.")
         print(downloadFailedTC_2nd)
 
 
